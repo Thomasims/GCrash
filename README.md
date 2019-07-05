@@ -27,4 +27,3 @@ Windows is not yet supported.
 ## TODO
 
 - Improve the default lua handler
-- Add an optional watchdog thread able to detect when the server stops responding to force it to abort.

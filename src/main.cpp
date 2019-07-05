@@ -1,10 +1,14 @@
 
+#include <chrono>
 #include <iomanip>
+#include <mutex>
+#include <thread>
 #include <sstream>
 #include <string>
 #include <signal.h>
 #include <stdio.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "lua_headers.h"
 
@@ -92,15 +96,115 @@ int sethandler( lua_State* state )
 	return 0;
 }
 
+struct watchdog_update {
+	std::mutex mtx;
+	std::chrono::system_clock::time_point last_call;
+	std::chrono::system_clock::duration period;
+	bool sleeping;
+	lua_State* L;
+};
+
+int watchdog_updatefn( lua_State* state )
+{
+	watchdog_update* upd = ( watchdog_update* )lua_topointer( state, lua_upvalueindex( 1 ) );
+	std::lock_guard<std::mutex> lck( upd->mtx );
+	upd->last_call = std::chrono::system_clock::now();
+	return 0;
+}
+
+void watchdog_hookfn( lua_State* state, lua_Debug* ar )
+{
+	dumpstate( L );
+	abort();
+}
+
+void watchdog_threadfn( watchdog_update* upd )
+{
+	std::unique_lock<std::mutex> lck( upd->mtx );
+	bool panicked = false;
+	while ( true ) {
+		auto dowait = upd->last_call + upd->period - std::chrono::system_clock::now();
+		lck.unlock();
+		std::this_thread::sleep_for( dowait );
+		lck.lock();
+		if ( upd->sleeping ) {
+			upd->last_call = std::chrono::system_clock::now();
+		} else if ( upd->last_call + upd->period < std::chrono::system_clock::now() ) {
+			if ( panicked ) break;
+			lua_sethook( upd->L, watchdog_hookfn, /* LUA_MASKCALL | LUA_MASKRET | LUA_MASKLINE */ 7, 0 );
+			upd->last_call = std::chrono::system_clock::now();
+			panicked = true;
+		}
+	}
+	dumpstate( upd->L );
+	delete upd;
+	abort();
+}
+
+int watchdog_ref;
+int startwatchdog( lua_State* state )
+{
+	if ( watchdog_ref )
+	{
+		lua_rawgeti( state, LUA_REGISTRYINDEX, watchdog_ref );
+		watchdog_update* upd = ( watchdog_update* ) lua_topointer( state, -1 );
+		std::lock_guard<std::mutex> lck( upd->mtx );
+		upd->sleeping = false;
+		lua_pop( state, 1 );
+		return 0;
+	}
+	int time = lua_tointeger( state, 1 );
+	lua_getglobal( state, "timer" );
+	lua_getfield( state, -1, "Create" );
+	lua_pushstring( state, "gcrash.watchdog" );
+	lua_pushinteger( state, time > 0 ? time / 3 : 10 );
+	lua_pushinteger( state, 0 );
+
+	watchdog_update* upd = new watchdog_update{};
+	upd->last_call = std::chrono::system_clock::now();
+	upd->L = state;
+	upd->period = std::chrono::seconds( time > 0 ? time : 30 );
+	upd->sleeping = false;
+	lua_pushlightuserdata( state, ( void* )upd );
+	lua_pushcclosure( state, watchdog_updatefn, 1 );
+
+	lua_pushlightuserdata( state, ( void* )upd );
+	watchdog_ref = luaL_ref( state, LUA_REGISTRYINDEX );
+
+	lua_call( state, 4, 0 );
+	lua_pop( state, 1 );
+
+	std::thread watchdog{ watchdog_threadfn, upd };
+	watchdog.detach();
+
+	return 0;
+}
+
+int stopwatchdog( lua_State* state )
+{
+	if ( watchdog_ref )
+	{
+		lua_rawgeti( state, LUA_REGISTRYINDEX, watchdog_ref );
+		watchdog_update* upd = ( watchdog_update* ) lua_topointer( state, -1 );
+		std::lock_guard<std::mutex> lck( upd->mtx );
+		upd->sleeping = true;
+		lua_pop( state, 1 );
+	}
+	return 0;
+}
+
 DLL_EXPORT int gmod13_open( lua_State* state )
 {
 	L = state;
 	luahandler = 0;
+	watchdog_ref = 0;
 
 	lua_newtable( state );
 	{
 		luaD_setcfunction( state, "dumpstate", dumpstate );
 		luaD_setcfunction( state, "sethandler", sethandler );
+		luaD_setcfunction( state, "startwatchdog", startwatchdog );
+		luaD_setcfunction( state, "stopwatchdog", stopwatchdog );
 		luaD_setcfunction( state, "crash", crash );
 	}
 	lua_setglobal( state, "gcrash" );
@@ -115,6 +219,8 @@ DLL_EXPORT int gmod13_open( lua_State* state )
 
 DLL_EXPORT int gmod13_close( lua_State* state )
 {
+	if ( watchdog_ref )
+		luaL_unref( state, LUA_REGISTRYINDEX, watchdog_ref );
 	return 0;
 }
 

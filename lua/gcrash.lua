@@ -1,15 +1,24 @@
 require "gcrash"
 
+local enable_watchdog = true
+
 --[[
   gcrash.dumpstate()
-	Manually call the crash handler, creating the luadump file and calling the lua crash handler.
-	
-  gcrash.crash()
-	Artificially create a segfault
+    Manually call the crash handler, creating the luadump file and calling the lua crash handler.
 
-  gcrash.sethandler( function( write_func ) )
-	Set the (optional) handler called when a segfault occurs.
-	This function is called without unwinding the stack, so you can extract informations such as locals out of it.
+  gcrash.crash()
+    Artificially create a segfault.
+
+  gcrash.sethandler( function( write_func ) handler )
+    Set the (optional) handler called when a segfault occurs.
+    This function is called without unwinding the stack, so you can extract informations such as locals out of it.
+
+  gcrash.startwatchdog( int time = 30 )
+    Start (or resume) then watchdog thread.
+    If the server hangs for <time> seconds, it will force a crash with SIGABRT, creating a luadump.
+
+  gcrash.stopwatchdog()
+    Pause the watchdog thread.
 ]]
 
 gcrash.sethandler( function( write )
@@ -34,3 +43,16 @@ gcrash.sethandler( function( write )
 end )
 
 gcrash.crash = nil -- You can comment this out if you want to use it (to crash your server?)
+
+if enable_watchdog then
+	if GetConVar( "sv_hibernate_think" ):GetBool() then
+		gcrash.startwatchdog()
+		print( "Starting gcrash watchdog..." )
+	else
+		hook.Add( "PlayerInitialSpawn", "gcrash_watchdogsleeper", function()
+			gcrash.startwatchdog()
+			print( "Starting gcrash watchdog..." )
+			hook.Remove( "PlayerInitialSpawn", "gcrash_watchdogsleeper" )
+		end )
+	end
+end
