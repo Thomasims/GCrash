@@ -7,6 +7,7 @@
 #include <string>
 #include <signal.h>
 #include <stdio.h>
+#include <io.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -56,6 +57,7 @@ int dumpstate( lua_State* state ) {
 	char buffer[64];
 	time_t t = time(NULL);
 	struct tm& now = *localtime( &t );
+	mkdir("garrysmod/data/gcrash")
 	sprintf( buffer, "garrysmod/data/gcrash/luadump-%04d%02d%02d_%02d%02d%02d.txt",
 		now.tm_year + 1900,
 		now.tm_mon + 1,
