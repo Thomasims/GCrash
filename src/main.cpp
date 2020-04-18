@@ -58,7 +58,7 @@ int dumpstate( lua_State* state ) {
 	struct tm& now = *localtime( &t );
 	int stat = mkdir( "garrysmod/data/gcrash" );
 	if (stat) {
-		exit(1)
+		exit(1);
 	}
 	sprintf( buffer, "garrysmod/data/gcrash/luadump-%04d%02d%02d_%02d%02d%02d.txt",
 		now.tm_year + 1900,
