@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "lua_headers.h"
 
@@ -56,7 +57,7 @@ int dumpstate( lua_State* state ) {
 	char buffer[64];
 	time_t t = time(NULL);
 	struct tm& now = *localtime( &t );
-	sprintf( buffer, "luadump-%04d%02d%02d_%02d%02d%02d.txt",
+	sprintf( buffer, "garrysmod/gcrash/luadump-%04d%02d%02d_%02d%02d%02d.txt",
 		now.tm_year + 1900,
 		now.tm_mon + 1,
 		now.tm_mday,
@@ -215,6 +216,8 @@ int destroywatchdog( lua_State* state )
 
 DLL_EXPORT int gmod13_open( lua_State* state )
 {
+	mkdir( "garrysmod/gcrash", 0755 );
+
 	L = state;
 	luahandler = 0;
 	watchdog_ref = 0;
