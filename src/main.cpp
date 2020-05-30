@@ -98,6 +98,7 @@ int sethandler( lua_State* state )
 
 struct watchdog_update {
 	std::mutex mtx;
+	std::timed_mutex shutdown;
 	std::chrono::system_clock::time_point last_call;
 	std::chrono::system_clock::duration period;
 	bool sleeping;
@@ -125,7 +126,11 @@ void watchdog_threadfn( watchdog_update* upd )
 	while ( true ) {
 		auto dowait = upd->last_call + upd->period - std::chrono::system_clock::now();
 		lck.unlock();
-		std::this_thread::sleep_for( dowait );
+		if ( upd->shutdown.try_lock_for( dowait ) ) {
+			upd->shutdown.unlock();
+			delete upd;
+			return;
+		}
 		lck.lock();
 		if ( upd->sleeping ) {
 			upd->last_call = std::chrono::system_clock::now();
@@ -165,6 +170,7 @@ int startwatchdog( lua_State* state )
 	upd->L = state;
 	upd->period = std::chrono::seconds( time > 0 ? time : 30 );
 	upd->sleeping = false;
+	upd->shutdown.lock();
 	lua_pushlightuserdata( state, ( void* )upd );
 	lua_pushcclosure( state, watchdog_updatefn, 1 );
 
@@ -176,7 +182,6 @@ int startwatchdog( lua_State* state )
 
 	std::thread watchdog{ watchdog_threadfn, upd };
 	watchdog.detach();
-
 	return 0;
 }
 
@@ -193,6 +198,21 @@ int stopwatchdog( lua_State* state )
 	return 0;
 }
 
+int destroywatchdog( lua_State* state )
+{
+	if ( watchdog_ref )
+	{
+                lua_rawgeti( state, LUA_REGISTRYINDEX, watchdog_ref );
+		luaL_unref( state, LUA_REGISTRYINDEX, watchdog_ref );
+                watchdog_update* upd = ( watchdog_update* ) lua_topointer( state, -1 );
+                std::lock_guard<std::mutex> lck( upd->mtx );
+                upd->shutdown.unlock();
+		watchdog_ref = 0;
+                lua_pop( state, 1 );
+        }
+        return 0;
+}
+
 DLL_EXPORT int gmod13_open( lua_State* state )
 {
 	L = state;
@@ -205,6 +225,7 @@ DLL_EXPORT int gmod13_open( lua_State* state )
 		luaD_setcfunction( state, "sethandler", sethandler );
 		luaD_setcfunction( state, "startwatchdog", startwatchdog );
 		luaD_setcfunction( state, "stopwatchdog", stopwatchdog );
+		luaD_setcfunction( state, "destroywatchdog", destroywatchdog );
 		luaD_setcfunction( state, "crash", crash );
 	}
 	lua_setglobal( state, "gcrash" );
@@ -219,8 +240,6 @@ DLL_EXPORT int gmod13_open( lua_State* state )
 
 DLL_EXPORT int gmod13_close( lua_State* state )
 {
-	if ( watchdog_ref )
-		luaL_unref( state, LUA_REGISTRYINDEX, watchdog_ref );
-	return 0;
+	return destroywatchdog( state );
 }
 
