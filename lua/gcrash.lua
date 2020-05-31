@@ -19,6 +19,9 @@ local enable_watchdog = true
 
   gcrash.stopwatchdog()
     Pause the watchdog thread.
+
+  gcrash.destroywatchdog()
+    Destroy the watchdog, this is done automatically on server stop.
 ]]
 
 gcrash.sethandler( function( write )
