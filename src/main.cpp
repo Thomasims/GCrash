@@ -159,26 +159,29 @@ int startwatchdog( lua_State* state )
 		lua_pop( state, 1 );
 		return 0;
 	}
+
 	int time = lua_tointeger( state, 1 );
-	lua_getglobal( state, "timer" );
-	lua_getfield( state, -1, "Create" );
-	lua_pushstring( state, "gcrash.watchdog" );
-	lua_pushinteger( state, time > 0 ? time / 3 : 10 );
-	lua_pushinteger( state, 0 );
+	if ( time < 10 )
+		time = 30;
 
 	watchdog_update* upd = new watchdog_update{};
 	upd->last_call = std::chrono::system_clock::now();
 	upd->L = state;
-	upd->period = std::chrono::seconds( time > 0 ? time : 30 );
+	upd->period = std::chrono::seconds( time );
 	upd->sleeping = false;
 	upd->shutdown.lock();
-	lua_pushlightuserdata( state, ( void* )upd );
-	lua_pushcclosure( state, watchdog_updatefn, 1 );
 
 	lua_pushlightuserdata( state, ( void* )upd );
 	watchdog_ref = luaL_ref( state, LUA_REGISTRYINDEX );
 
-	lua_call( state, 4, 0 );
+	lua_getglobal( state, "timer" );
+	lua_getfield( state, -1, "Create" );
+		lua_pushstring( state, "gcrash.watchdog" );
+		lua_pushinteger( state, time / 3 );
+		lua_pushinteger( state, 0 );
+		lua_pushlightuserdata( state, ( void* )upd );
+		lua_pushcclosure( state, watchdog_updatefn, 1 );
+		lua_call( state, 4, 0 );
 	lua_pop( state, 1 );
 
 	std::thread watchdog{ watchdog_threadfn, upd };
@@ -203,15 +206,15 @@ int destroywatchdog( lua_State* state )
 {
 	if ( watchdog_ref )
 	{
-                lua_rawgeti( state, LUA_REGISTRYINDEX, watchdog_ref );
+		lua_rawgeti( state, LUA_REGISTRYINDEX, watchdog_ref );
 		luaL_unref( state, LUA_REGISTRYINDEX, watchdog_ref );
-                watchdog_update* upd = ( watchdog_update* ) lua_topointer( state, -1 );
-                std::lock_guard<std::mutex> lck( upd->mtx );
-                upd->shutdown.unlock();
+		watchdog_update* upd = ( watchdog_update* ) lua_topointer( state, -1 );
+		std::lock_guard<std::mutex> lck( upd->mtx );
+		upd->shutdown.unlock();
 		watchdog_ref = 0;
-                lua_pop( state, 1 );
-        }
-        return 0;
+		lua_pop( state, 1 );
+	}
+	return 0;
 }
 
 DLL_EXPORT int gmod13_open( lua_State* state )
