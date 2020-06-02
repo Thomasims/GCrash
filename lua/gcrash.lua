@@ -48,14 +48,8 @@ end )
 gcrash.crash = nil -- You can comment this out if you want to use it (to crash your server?)
 
 if enable_watchdog then
-	if GetConVar( "sv_hibernate_think" ):GetBool() then
+	timer.Simple(30, function()
 		gcrash.startwatchdog()
 		print( "Starting gcrash watchdog..." )
-	else
-		hook.Add( "PlayerInitialSpawn", "gcrash_watchdogsleeper", function()
-			gcrash.startwatchdog()
-			print( "Starting gcrash watchdog..." )
-			hook.Remove( "PlayerInitialSpawn", "gcrash_watchdogsleeper" )
-		end )
-	end
+	end)
 end
