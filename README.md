@@ -17,10 +17,11 @@ If you wish to build the module yourself, the build files are included in this r
 ### _Linux_
 
 1. Get `premake5` and place it next to `BuildProjects.bat`
-2. Run `premake5 --os=linux gmake2`
-3. CD into `projects/linux/`
-4. `make` optionally with `config=(debug|release)`
-5. Output is `build/gmsv_gcrash_linux.dll` (the makefile renames the created .so to the GMod module format)
+2. Acquire an up-to-date version of `lua_shared.so` and copy it to `libs/garrysmod/bin` (32 bit) or `libs/bin/linux64` (64 bit)
+3. Run `premake5 --os=linux gmake2`
+4. CD into `projects/linux/`
+5. `make` optionally with `config=(debug|release|debug64|release64)`
+6. Output is `build/gmsv_gcrash_linux.dll` or `build/gmsv_gcrash_linux64.dll` (the makefile renames the created .so to the GMod module format)
 
 ### _Windows_
 
